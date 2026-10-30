@@ -1,0 +1,22 @@
+[package]
+name = "ramguard"
+version = "0.2.0"
+edition = "2021"
+publish = false
+license = "GPL-3.0-only"
+description = "A lightweight Windows CLI for memory diagnosis and guarded process and cache cleanup"
+repository = "https://github.com/shree-crypto/ramguard"
+
+[features]
+default = []
+m5-tools = []
+
+[dependencies]
+clap = { version = "4.6", default-features = false, features = ["derive", "std", "help", "usage", "error-context", "suggestions"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading", "Win32_System_Diagnostics_ToolHelp", "Win32_System_ProcessStatus", "Win32_System_SystemInformation", "Win32_Storage_FileSystem", "Win32_UI_WindowsAndMessaging"] }
+
+[profile.release]
+opt-level = 2
+panic = "abort"
