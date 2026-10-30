@@ -765,8 +765,23 @@ fn is_beneath(path: &Path, parent: &Path, allow_equal: bool) -> bool {
 }
 
 #[cfg(test)]
+fn canonical_fixture_temp() -> io::Result<PathBuf> {
+    // Windows runners can expose TEMP through an 8.3 alias. Fixtures must use
+    // the long canonical path before exercising strict production checks.
+    let canonical = fs::canonicalize(std::env::temp_dir())?;
+    let text = canonical.to_string_lossy();
+    Ok(if let Some(path) = text.strip_prefix(r"\\?\UNC\") {
+        PathBuf::from(format!(r"\\{path}"))
+    } else if let Some(path) = text.strip_prefix(r"\\?\") {
+        PathBuf::from(path)
+    } else {
+        canonical
+    })
+}
+
+#[cfg(test)]
 fn fixture_root(path: &Path, id: &str) -> io::Result<CacheRoot> {
-    let temp = normalize_lexical(&std::env::temp_dir());
+    let temp = normalize_lexical(&canonical_fixture_temp()?);
     let path = normalize_lexical(path);
     if !is_beneath(&path, &temp, false) || !path.is_dir() {
         return Err(io::Error::new(
@@ -810,6 +825,17 @@ mod tests {
             cfg!(feature = "m5-tools")
         );
     }
+
+    #[test]
+    fn fixture_temp_uses_the_same_directory_without_a_verbatim_prefix() {
+        let path = canonical_fixture_temp().unwrap();
+        assert!(path.is_absolute());
+        assert!(!path.to_string_lossy().starts_with(r"\\?\"));
+        assert_eq!(
+            fs::canonicalize(path).unwrap(),
+            fs::canonicalize(std::env::temp_dir()).unwrap()
+        );
+    }
     use std::fs::{File, FileTimes};
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{Duration, SystemTime};
@@ -821,11 +847,13 @@ mod tests {
     impl Fixture {
         fn new(label: &str) -> Self {
             let serial = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
-            let path = std::env::temp_dir().join(format!(
-                "ramguard-{label}-{}-{}-{serial}",
-                std::process::id(),
-                crate::model::now_file_time(),
-            ));
+            let path = canonical_fixture_temp()
+                .expect("canonical fixture base")
+                .join(format!(
+                    "ramguard-{label}-{}-{}-{serial}",
+                    std::process::id(),
+                    crate::model::now_file_time(),
+                ));
             fs::create_dir(&path).expect("create isolated cache fixture");
             fixture_root(&path, label).expect("fixture containment");
             Self(path)
